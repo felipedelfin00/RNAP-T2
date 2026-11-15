@@ -13,8 +13,10 @@ from .config import (
     WEIGHT_DECAY
 )
 
+from .utils import autocast_context, create_grad_scaler
 
-def run_epoch(model, loader, criterion, device, optimizer = None):
+
+def run_epoch(model, loader, criterion, device, optimizer = None, scaler = None):
     training = optimizer is not None
 
     if training:
@@ -22,33 +24,38 @@ def run_epoch(model, loader, criterion, device, optimizer = None):
     else:
         model.eval()
 
-    total_loss = 0.0
+    total_loss = torch.zeros((), dtype = torch.float64, device = device)
     all_predictions = []
     all_labels = []
 
     with torch.set_grad_enabled(training):
         for images, labels in loader:
-            images = images.to(device, non_blocking = True)
-            labels = labels.to(device, non_blocking = True)
-
             if training:
                 optimizer.zero_grad(set_to_none = True)
 
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            with autocast_context(device):
+                outputs = model(images)
+
+            loss = criterion(outputs.float(), labels)
 
             if training:
-                loss.backward()
-                optimizer.step()
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
 
-            total_loss += loss.item() * labels.size(0)
+            total_loss += loss.detach().double() * labels.size(0)
 
-            predictions = outputs.argmax(dim = 1)
+            all_predictions.append(outputs.argmax(dim = 1))
+            all_labels.append(labels)
 
-            all_predictions.extend(predictions.detach().cpu().tolist())
-            all_labels.extend(labels.detach().cpu().tolist())
+    average_loss = total_loss.item() / loader.num_samples
 
-    average_loss = total_loss / len(loader.dataset)
+    all_predictions = torch.cat(all_predictions).cpu().numpy()
+    all_labels = torch.cat(all_labels).cpu().numpy()
 
     accuracy = accuracy_score(all_labels, all_predictions)
 
@@ -91,6 +98,8 @@ def train_model(
         weight_decay = weight_decay
     )
 
+    scaler = create_grad_scaler(device)
+
     history = []
 
     best_loss = float("inf")
@@ -104,7 +113,8 @@ def train_model(
             train_loader,
             criterion,
             device,
-            optimizer
+            optimizer,
+            scaler
         )
 
         val_metrics = run_epoch(
@@ -175,8 +185,10 @@ def benchmark_training(
 
     if measured_epochs < 1:
         raise ValueError("Measured epochs must be at least 1.")
+
+    print(f"    Device: {device} | Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
     
-    model = model_factory().to(device)
+    model = model_factory().to(device, memory_format = torch.contiguous_format)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -186,19 +198,25 @@ def benchmark_training(
         weight_decay = weight_decay
     )
 
+    scaler = create_grad_scaler(device)
+
     def synchronize():
         if device.type == "cuda":
             torch.cuda.synchronize(device)
 
 
     #   Warm-up
-    for _ in range(warmup_epochs):
+    for i in range(warmup_epochs):
+        print(f"    Warm-up {i + 1}/{warmup_epochs}...", end = " ", flush = True)
+        start_time = time.perf_counter()
+
         run_epoch(
             model,
             train_loader,
             criterion,
             device,
-            optimizer
+            optimizer,
+            scaler
         )
 
         run_epoch(
@@ -208,11 +226,16 @@ def benchmark_training(
             device
         )
 
+        synchronize()
+        print(f"done in {time.perf_counter() - start_time:.1f}s")
+
     epoch_times = []
 
 
     #   Measuring
-    for _ in range(measured_epochs):
+    for i in range(measured_epochs):
+        print(f"    Measuring {i + 1}/{measured_epochs}...", end = " ", flush = True)
+
         synchronize()
         start_time = time.perf_counter()
 
@@ -221,7 +244,8 @@ def benchmark_training(
             train_loader,
             criterion,
             device,
-            optimizer
+            optimizer,
+            scaler
         )
 
         run_epoch(
@@ -235,6 +259,7 @@ def benchmark_training(
         elapsed = time.perf_counter() - start_time
 
         epoch_times.append(elapsed)
+        print(f"{elapsed:.1f}s")
 
     average_epoch_time = sum(epoch_times) / len(epoch_times)
 

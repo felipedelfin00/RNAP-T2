@@ -109,7 +109,7 @@ A configuração experimental utilizada é:
 
 |Parâmetro|Valor|
 |-|-:|
-|Resolução das imagens|224 x 224|
+|Resolução das imagens|128 x 128|
 |Número de classes|25|
 |Batch size|32|
 |Épocas máximas|35|

@@ -17,7 +17,6 @@ from src.dataset import (
     load_dataset,
     split_dataset,
     calculate_normalization_stats,
-    apply_normalization,
     create_dataloaders,
     select_train_fraction
 )
@@ -44,13 +43,7 @@ def prepare_seed_data(dataset, seed):
         train_idx
     )
 
-    apply_normalization(
-        dataset,
-        mean,
-        std
-    )
-
-    return train_idx, val_idx, test_idx
+    return train_idx, val_idx, test_idx, mean, std
 
 
 def create_loaders(
@@ -58,6 +51,8 @@ def create_loaders(
     train_idx,
     val_idx,
     test_idx,
+    mean,
+    std,
     fraction,
     seed
 ):
@@ -73,6 +68,8 @@ def create_loaders(
         selected_train_idx,
         val_idx,
         test_idx,
+        mean,
+        std,
         seed
     )
 
@@ -96,7 +93,7 @@ def run_benchmark(dataset, seed, first_seed_data):
     print("BENCHMARK")
     print("-" * 48)
 
-    train_idx, val_idx, test_idx = first_seed_data
+    train_idx, val_idx, test_idx, mean, std = first_seed_data
 
     benchmark_times = {}
 
@@ -110,6 +107,8 @@ def run_benchmark(dataset, seed, first_seed_data):
             train_idx,
             val_idx,
             test_idx,
+            mean,
+            std,
             fraction,
             seed
         )
@@ -152,9 +151,9 @@ def run_experiments(dataset, class_names, first_seed_data):
         print("-" * 48)
 
         if seed == SEEDS[0]:
-            train_idx, val_idx, test_idx = first_seed_data
+            train_idx, val_idx, test_idx, mean, std = first_seed_data
         else:
-            train_idx, val_idx, test_idx = prepare_seed_data(
+            train_idx, val_idx, test_idx, mean, std = prepare_seed_data(
                 dataset,
                 seed
             )
@@ -171,13 +170,18 @@ def run_experiments(dataset, class_names, first_seed_data):
                 train_idx,
                 val_idx,
                 test_idx,
+                mean,
+                std,
                 fraction,
                 seed
             )
 
             set_seed(seed)
 
-            model = ArchitectureCNN(NUM_CLASSES).to(DEVICE)
+            model = ArchitectureCNN(NUM_CLASSES).to(
+                DEVICE, 
+                memory_format = torch.contiguous_format
+            )
 
             if DEVICE.type == "cuda":
                 torch.cuda.synchronize(DEVICE)

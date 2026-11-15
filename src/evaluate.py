@@ -9,6 +9,7 @@ from sklearn.metrics import (
 )
 
 from .config import DEVICE
+from .utils import autocast_context
 
 
 def evaluate_model(
@@ -17,33 +18,30 @@ def evaluate_model(
     class_names,
     device = DEVICE
 ):
-    if len(class_names) != len(test_loader.dataset.dataset.classes):
-        raise ValueError("Class names do not match the dataset classes")
-    
     model.eval()
 
     criterion = nn.CrossEntropyLoss()
 
-    total_loss = 0.0
+    total_loss = torch.zeros((), dtype = torch.float64, device = device)
     all_predictions = []
     all_labels = []
 
     with torch.no_grad():
         for images, labels in test_loader:
-            images = images.to(device, non_blocking = True)
-            labels = labels.to(device, non_blocking = True)
+            with autocast_context(device):
+                outputs = model(images)
 
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs.float(), labels)
 
-            predictions = outputs.argmax(dim = 1)
+            total_loss += loss.detach().double() * labels.size(0)
 
-            total_loss += loss.item() * labels.size(0)
+            all_predictions.append(outputs.argmax(dim = 1))
+            all_labels.append(labels)
 
-            all_predictions.extend(predictions.cpu().tolist())
-            all_labels.extend(labels.cpu().tolist())
+    average_loss = total_loss.item() / test_loader.num_samples
 
-    average_loss = total_loss / len(test_loader.dataset)
+    all_predictions = torch.cat(all_predictions).cpu().tolist()
+    all_labels = torch.cat(all_labels).cpu().tolist()
 
     accuracy = accuracy_score(all_labels, all_predictions)
 

@@ -8,6 +8,7 @@ __pycache__/
 .idea/
 .vscode/
 
+/cache/
 /data/
 /experiments/checkpoints/
 
