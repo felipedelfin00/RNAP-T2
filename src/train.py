@@ -102,7 +102,7 @@ def train_model(
 
     history = []
 
-    best_loss = float("inf")
+    best_f1 = float("-inf")
     best_epoch = 0
     best_model_state = None
     epochs_without_improvement = 0
@@ -144,8 +144,8 @@ def train_model(
             f"| VF1: {val_metrics['f1_macro']:.4f} "
         )
 
-        if val_metrics["loss"] < best_loss:            
-            best_loss = val_metrics["loss"]
+        if val_metrics["f1_macro"] > best_f1:            
+            best_f1 = val_metrics["f1_macro"]
             best_epoch = epoch + 1
             best_model_state = copy.deepcopy(model.state_dict())
             epochs_without_improvement = 0
@@ -153,11 +153,12 @@ def train_model(
             if checkpoint_path is not None:
                 torch.save({
                     "model_state_dict": best_model_state,
-                    "best_val_loss": best_loss,
+                    "best_val_f1_macro": best_f1,
                     "epoch": best_epoch
                 }, checkpoint_path)
 
             print("[!] New best model.")
+            
         else :
             epochs_without_improvement += 1
 

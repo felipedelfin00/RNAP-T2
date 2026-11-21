@@ -6,7 +6,7 @@ import torch
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 from sklearn.model_selection import train_test_split
-from torchvision import datasets
+from torchvision import datasets, transforms
 
 from .config import (
     CACHE_DIR,
@@ -67,8 +67,25 @@ class TensorLoader:
             std, dtype = torch.float32, device = device
         ).view(1, 3, 1, 1)
 
+        self.augment = None
+
+        if shuffle:
+            self.augment = transforms.Compose([
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(
+                    degrees=5,
+                    fill=0.5
+                ),
+                transforms.ColorJitter(
+                    brightness=0.15,
+                    contrast=0.15,
+                    saturation=0.10,
+                    hue=0.02
+                )
+            ])
+
     def __len__(self):
-        return (self.num_samples + self.batch_size - 1)
+        return (self.num_samples + self.batch_size - 1) // self.batch_size
 
     def __iter__(self):
         if self.shuffle:
@@ -86,6 +103,10 @@ class TensorLoader:
             batch_idx = order[start:start + self.batch_size]
 
             images = self.images[batch_idx].float().div_(255.0)
+
+            if self.augment is not None:
+                images = self.augment(images)
+
             images = (images - self.mean) / self.std
             images = images.contiguous(memory_format = torch.contiguous_format)
 
@@ -233,7 +254,7 @@ def calculate_normalization_stats(dataset, train_idx, chunk_size = 512):
     return mean.cpu().tolist(), std.cpu().tolist()
 
 
-def create_dataloaders(dataset, train_idx, val_idx, test_idx, mean, std, seed):
+def create_dataloaders(dataset, train_idx, val_idx, test_idx, mean, std, seed, batch_size=BATCH_SIZE):
     generator = torch.Generator()
     generator.manual_seed(seed)
 
@@ -243,12 +264,13 @@ def create_dataloaders(dataset, train_idx, val_idx, test_idx, mean, std, seed):
         train_idx,
         mean,
         std,
+        batch_size,
         shuffle = True,
         generator = generator
     )
 
-    val_loader = TensorLoader(dataset, val_idx, mean, std)
-    test_loader = TensorLoader(dataset, test_idx, mean, std)
+    val_loader = TensorLoader(dataset, val_idx, mean, std, batch_size)
+    test_loader = TensorLoader(dataset, test_idx, mean, std, batch_size)
 
     return train_loader, val_loader, test_loader
 

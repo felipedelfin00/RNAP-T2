@@ -4,10 +4,11 @@
 
 ---
 
-Projeto de classificação de imagens de edifícios em 25 estilos arquitetônicos utilizando uma rede neural convolucional (CNN) implementada com PyTorch.
+Projeto de classificação de imagens de edifícios em 25 estilos arquitetônicos utilizando redes neurais convolucionais (CNNs) implementada com PyTorch.
 
-O experimento compara o desempenho do modelo utilizando diferentes frações do conjunto de treinamento (25% e 100%), repetindo cada configuração com cinco seeds diferentes.
+O experimento compara uma CNN desenvolvida e treinada do zero com uma ResNet-18 pré-treinada no ImageNet, avaliando também o impacto da quantidade de dados de treinamento no desempenho dos modelos.
 
+Cada configuração experimental é executada com duas frações do conjunto de treinamento (25% e 100%) e cinco seeds diferentes, totalizando 20 execuções.
 
 ## 1. Preparação do ambiente
 
@@ -40,7 +41,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**GPU NVIDIA**: caso deseje utilizar CUDA, verifique se a versão instalada do PyTorch é compatível com a GPU e os drivers disponíveis.
+**GPU NVIDIA**: o dispositivo de execução é selecionado automaticamente. Para utilizar CUDA, é necessário que a instalação do PyTorch seja compatível com a GPU e os drivers disponíveis.
 
 
 ## 2. Execução do pipeline
@@ -52,18 +53,20 @@ python main.py
 ```
 
 O pipeline executa as seguintes etapas:
+
 1. Carregamento ou download do dataset.
-2. Divisão estratificada dos dados.
-3. Cálculo das estatísticas de normalização.
-4. Criação dos conjuntos de treinamento, validação e teste.
-5. Execução opcional de um benchmark para estimar o tempo de treinamento.
-6. Treinamento das configurações experimentais.
-7. Avaliação dos modelos no conjunto de teste.
-8. Exportação dos resultados e checkpoints.
+2. Pré-processamento e armazenamentodas imagens em cache
+3. Divisão estratificada dos dados em treinamento, validação e teste.
+4. Cálculo das estatísticas de normalização.
+5. Criação dos conjuntos de dados e DataLoaders.
+6. Execução opcional de um benchmark para estimativa do tempo de treinamento.
+7. Treinamento das configurações experimentais.
+8. Avaliação dos melhores modelos no conjunto de teste.
+9. Exportação dos resultados, históricos e checkpoints.
 
-São realizados dez execuções no total: duas frações do conjunto de treinamento para cada uma das cinco seeds.
+São realizados 20 execuções, considerando duas arquiteturas, duas frações de treinamento e cinco seeds.
 
-O treinamento utiliza early stopping com base na loss de validação.
+O treinamento utiliza early stopping com base no F1-score macro da validação. Os pessos correspondentes à época com o maior F1-score macro de validação são restaurados e utilizados na avaliação final.
 
 
 ## 3. Geração dos gráficos
@@ -74,29 +77,36 @@ Após a conclusão dos experimentos, execute:
 python -m src.visualize
 ```
 
-O módulo de visualização gera automaticamente dois tipos de gráficos:
+O módulo de visualização gera gráficos para cada arquitetura, permitindo comparar os resultados obtidos com 25% e 100% dos dados de treinamento.
 
 
-### Curvas de treinamento (training_curves.png)
+### Curvas de treinamento
 
-Uma figura consolidada com dois gráficos lado a lado, comparando os experimentos com 25% e 100% dos dados de treinamento. Cada gráfico apresenta:
+As curvas apresentam:
 
-- Média das curvas de loss de treinamento e validação entre as cinco execuções.
+- Média das métricas de treinamento e validação entre as cinco seeds.
 - Faixas de desvio-padrão (± 1 desvio-padrão).
-- Identificação da melhor época média de validação.
-- F1-Score macro, acurácia e tempo de execução, apresentados como média ± desvio-padrão.
-- Quantidade de execuções consideradas nas curvas.
+- Evolução da loss de treinamento e validação
+- Identificação das melhores épocas.
+- Métricas finais de F1-score macro e acurácia, apresentadas como média ± desvio-padrão
+- Tempo de treinamento, apresentado como média ± desvio-padrão.
 
 
 ### Matrizes de confusão
 
-Uma imagem para cada execução, gerada a partir dos respectivos arquivos CSV. As matrizes apresentam os valores absolutos de classificação em cada célula, com as cores normalizadas por classe verdadeira para facilitar a comparação entre classes.
+É gerada uma matriz de confusão para cada execução experimental, utilizando as predições realizadas no conjunto de teste.
+
+As matrizes apresentam os valores abolutos de classificação em cada célula, com as cores normalizadas por classe verdadeira, facilitando a identificação dos estilos arquitetônicos com maior dificuldade de classificação.
 
 
 ## 4. Dataset
-O projeto utiliza o dataset [Architectural Styles Dataset](https://www.kaggle.com/datasets/dumitrux/architectural-styles-dataset), disponibilizado no Kaggle por dumitrux.
+O projeto utiliza o [Architectural Styles Dataset](https://www.kaggle.com/datasets/dumitrux/architectural-styles-dataset), disponibilizado no Kaggle por dumitrux.
 
-O download é realizado automaticamente pelo KaggleHub durante a execução do pipeline, caso o dataset ainda não esteja disponível localmente.
+O conjunto de dados contém 10.113 imagens distribuídas entre 25 estilos arquitetônicos.
+
+O download é realizado automaticamente utilizando KaggleHub durante a execução do pipeline, caso o dataset ainda não esteja disponível localmente.
+
+As imagens são redimensionadas para 128 x 128 pixels e armazenadas em cache para evitar o processamento repetido em execuções posteriores.
 
 Não é necessário baixar ou organizar as imagens manualmente.
 
@@ -105,33 +115,64 @@ Não é necessário baixar ou organizar as imagens manualmente.
 
 As configurações podem ser encontradas em `src/config.py`.
 
-A configuração experimental utilizada é:
+### Configurações gerais
 
-|Parâmetro|Valor|
-|-|-:|
-|Resolução das imagens|128 x 128|
-|Número de classes|25|
-|Batch size|32|
-|Épocas máximas|35|
-|Learning rate|0.001|
-|Weight decay|0.0001|
-|Patience (early stopping)|7|
-|Frações de treinamento|25% e 100%|
-|Seeds|6, 12, 18, 24 e 30|
+| Parâmetro | Valor |
+| ---| ---: |
+| Resolução das imagens | 128 x 128 |
+| Número de classes | 25 |
+| Frações de treinamento | 25% e 100% |
+| Seeds | 6, 12, 18, 24 e 30 |
+| Batch size | 64 |
+| Épocas máximas | 35 |
+| Patience (early stopping) | 5 |
+| Otimizador | AdamW |
+| Função de perda | Cross-Entropy Loss |
+| Métrica principal | F1-score macro |
+| Métrica secundária | Acurácia |
 
 O conjunto de dados é dividido de maneira estratificada em:
+
 - 70% para treinamento;
 - 15% para validação;
 - 15% para teste.
 
-O treinamento é realizado com uma CNN inicializada do zero, utilizando AdamW e Cross-Entropy Loss.
+As seeds são utilizadas para controlar a aleatoriedade das execuções e permitir a comparação entre diferentes configurações experimentais.
+
+Ambas as arquiteturas utilizam data augmentation durante o treinamento, incluindo:
+
+- Random Horizontal Flip;
+- Random Rotation de até 5%;
+- Color Jitter para variações de brilho, contraste, saturação e matiz.
+
+As transformações não são aplicadas aos conjuntos de validação e teste.
+
+A normalização é realizada utilizando as estatísticas calculadas a partir do conjunto de treinamento para a CNN baseline e os valores de normalização do ImageNet para a ResNet-18.
 
 O dispositivo de execução é selecionado automaticamente: CUDA, quando disponível, ou CPU.
 
+### CNN baseline
 
-## 6. Arquitetura da CNN
+| Parâmetro | Valor |
+| --- | ---: |
+| Learning Rate | 0.001 |
+| Weight Decay | 0.0001 |
+| Inicialização | Pesos aleatórios |
 
-O modelo utilizado é uma rede neural convolucional desenvolvida e treinada do zero, sem utilização de pesos pré-treinados.
+### ResNet-18
+
+| Parâmetro | Valor |
+| --- | ---: |
+| Learning rate | 0.0001 |
+| Weight decay | 0.001 |
+| Inicialização | Pesos pré-treinados no ImageNet |
+
+
+## 6. Arquiteturas utilizadas
+
+### CNN baseline
+
+A CNN baseline é uma rede neural convolucional desenvolvida e treinada do zero, sem utilização de pesos pré-treinados.
 
 A arquitetura é composta por três blocos convolucionais, responsáveis por extrair características progressivamente mais complexas das imagens:
 
@@ -146,3 +187,28 @@ Após os blocos convolucionais, o modelo utiliza:
 1. **Adaptive Average Pooling:** agrega os mapas de características em uma representação de tamanho fixo.
 2. **Dropout (0.3):** reduz o risco de overfitting durante o treinamento.
 3. **Camada totalmente conectada:** produz 25 valores, um para cada classe arquitetônica.
+
+### ResNet-18
+
+A ResNet-18 utiliza uma arquitetura residual originalmente treinada no ImageNet, com pesos pré-treinados transferidos para o problema de classificação de estilos arquitetônicos.
+
+A camada totalmente original foi substituida por uma noca camada de classificação, com dropout de 0.3 e 25 saídas, correspondentes às classes do dataset.
+
+Todos os parâmetros da rede são disponibilizados para treinamento (fine-tuning completo), permitindo adaptar tanto as características extraídas quanto a camada de classificação ao conjunto de dados utilizado.
+
+
+## 7. Avaliação experimental
+
+O desempenho dos modelos é avaliado utilizando:
+
+- **F1-score macro:** métrica principal ,calculada pela média do F1-score das 25 classes, atribundo o mesmo peso a cada classe.
+- **Acurácia:** proporção de imagens classificadas corretamente.
+- **Loss:** utilizada para acompanhar o comportamento do treinamento e da validação.
+
+Os modelos são selecionados com base no maior F1-score macro obtido no conjunto de validação. O conjunto de teste é utilizado somentre para a avaliação final dos modelos selecionados.
+
+Os resultados das cinco seeds são consolidados por média e desvio-padrão, permitindo analisar o desempenho e a variabilidade das configurações experimentais.
+
+---
+
+Desenvolvido como parte da disciplina de Redes Neurais e Aprendizado Profundo

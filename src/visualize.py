@@ -71,14 +71,16 @@ def plot_confusion_matrix(csv_path):
     print(f"Plot saved: {output_path}")
 
 
-def load_histories(fraction_label):
+def load_histories(architecture, fraction):
+    fraction_label = f"{fraction:.2f}"
+
     history_files = sorted(
-        RESULTS_DIR.glob(f"seed_*_fraction_{fraction_label}_history.csv")
+        RESULTS_DIR.glob(f"{architecture}_seed_*_fraction_{fraction_label}_history.csv")
     )
 
     if not history_files:
         raise FileNotFoundError(
-            f"No history files found for fraction {fraction_label}%."
+            f"No history files found for {architecture}, fraction {fraction_label}%."
         )
 
     histories = [pd.read_csv(csv_path) for csv_path in history_files]
@@ -86,11 +88,14 @@ def load_histories(fraction_label):
     return pd.concat(histories, ignore_index=True)
 
 
-def calculate_summary(summary_df, fraction):
-    fraction_df = summary_df[summary_df["fraction"].round(2) == fraction]
+def calculate_summary(summary_df, architecture, fraction):
+    fraction_df = summary_df[
+        (summary_df["model"] == architecture) &
+        (summary_df["fraction"].round(2) == fraction)
+    ]
     
     if fraction_df.empty:
-        raise ValueError(f"No summary results for fraction {fraction:.0%}.")
+        raise ValueError(f"No summary results for {architecture}, fraction {fraction:.0%}.")
 
     metrics = {}
 
@@ -180,9 +185,7 @@ def draw_loss_panel(ax, history_df):
     return counts
 
 
-def plot_training_curves():
-    summary_df = pd.read_csv(RESULTS_DIR / "summary.csv")
-    
+def plot_training_curves(architecture, summary_df):
     fractions = [
         (0.25, "25%"),
         (1.00, "100%")
@@ -196,7 +199,7 @@ def plot_training_curves():
     )
 
     for ax, (fraction, label) in zip(axes, fractions):
-        history_df = load_histories(round(fraction * 100))
+        history_df = load_histories(architecture, fraction)
         counts = draw_loss_panel(ax, history_df)
 
         ax.set_title(
@@ -205,7 +208,8 @@ def plot_training_curves():
             pad=10
         )
 
-        metrics = calculate_summary(summary_df, fraction)
+        metrics = calculate_summary(summary_df, architecture, fraction)
+
         ax.text(
             0.5, -0.13,
             build_metrics_text(metrics),
@@ -218,11 +222,13 @@ def plot_training_curves():
     axes[0].set_ylabel("Cross-entropy loss", fontsize=12)
 
     fig.suptitle(
-        "Average training and validation loss (shaded area = ±1 std)",
+        f"{architecture.upper()} - Average training and validation loss "
+        "(shaded area = ±1 std)",
         fontsize=16
     )
 
-    output_path = PLOTS_DIR / "training_curves.png"
+    output_path = PLOTS_DIR / f"training_curves_{architecture}.png"
+
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
@@ -232,7 +238,22 @@ def plot_training_curves():
 def main():
     PLOTS_DIR.mkdir(parents = True, exist_ok = True)
 
-    plot_training_curves()
+    summary_path = RESULTS_DIR / "summary_all.csv"
+
+    if not summary_path.exists():
+        raise FileNotFoundError(
+            f"Summary file not found: {summary_path}"
+        )
+
+    summary_df = pd.read_csv(summary_path)
+
+    architectures = ["baseline", "resnet18"]
+
+    for architecture in architectures:
+        plot_training_curves(
+            architecture,
+            summary_df
+        )
 
     csv_files = sorted(RESULTS_DIR.glob("*_confusion_matrix.csv"))
 
